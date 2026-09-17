@@ -20,7 +20,7 @@ import time
 # VARIABEL KONFIGURASI (UBAH SESUAI SOAL LKS SEBELUM DI-RUN!)
 # =================================================================
 DOMAIN_NAME = "lks.local"
-SERVER_IP = "192.168.10.1"
+SERVER_IP = "10.11.12.206"
 ROOT_PASSWORD = "LKSOKE123"
 DB_ROOT_PASS = "LKSOKE123"
 LDAP_ADMIN_PASS = "LKSOKE123"
