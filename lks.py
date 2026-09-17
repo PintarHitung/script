@@ -21,9 +21,9 @@ import time
 # =================================================================
 DOMAIN_NAME = "lks.local"
 SERVER_IP = "192.168.10.1"
-ROOT_PASSWORD = "PasswordLKS123!"
-DB_ROOT_PASS = "PasswordLKS123!"
-LDAP_ADMIN_PASS = "PasswordLKS123!"
+ROOT_PASSWORD = "LKSOKE123"
+DB_ROOT_PASS = "LKSOKE123"
+LDAP_ADMIN_PASS = "LKSOKE123"
 # =================================================================
 
 # Warna untuk output Terminal
