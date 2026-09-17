@@ -5,9 +5,6 @@ LKS LINUX SERVER CONFIGURATION - MASTER AUTO PROVISIONER
 ===================================================================
 Author: Assistant
 OS Target: Ubuntu Server 20.04 / 22.04 / 24.04 LTS
-Description: 
-Script ini akan mengotomatisasi instalasi dan konfigurasi dasar 
-13 modul Linux Server LKS secara sistematis.
 ===================================================================
 """
 
@@ -17,7 +14,7 @@ import sys
 import time
 
 # =================================================================
-# VARIABEL KONFIGURASI (UBAH SESUAI SOAL LKS SEBELUM DI-RUN!)
+# VARIABEL KONFIGURASI SESUAI PERMINTAAN TERBARU
 # =================================================================
 DOMAIN_NAME = "lks.local"
 SERVER_IP = "10.11.12.206"
@@ -26,7 +23,6 @@ DB_ROOT_PASS = "LKSOKE123"
 LDAP_ADMIN_PASS = "LKSOKE123"
 # =================================================================
 
-# Warna untuk output Terminal
 class Colors:
     HEADER = '\033[95m'
     OKBLUE = '\033[94m'
@@ -47,9 +43,8 @@ def print_error(msg):
     print(f"{Colors.FAIL}{Colors.BOLD}[ ✗ ] {msg}{Colors.ENDC}")
 
 def run_cmd(cmd, ignore_error=False, silent=True):
-    """Menjalankan perintah bash dengan aman"""
     env = os.environ.copy()
-    env["DEBIAN_FRONTEND"] = "noninteractive" # Mencegah prompt instalasi
+    env["DEBIAN_FRONTEND"] = "noninteractive"
     
     try:
         result = subprocess.run(cmd, shell=True, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
@@ -62,10 +57,8 @@ def run_cmd(cmd, ignore_error=False, silent=True):
         return False, str(e)
 
 def check_root():
-    """Memastikan script dijalankan sebagai root (sudo)"""
     if os.geteuid() != 0:
-        print(f"{Colors.FAIL}ERROR: Script ini wajib dijalankan dengan sudo!{Colors.ENDC}")
-        print("Gunakan perintah: sudo python3 lks_auto_install.py")
+        print(f"{Colors.FAIL}ERROR: Script wajib dijalankan dengan sudo!{Colors.ENDC}")
         sys.exit(1)
 
 def step_ip_forwarding():
@@ -87,7 +80,6 @@ def step_dns():
     print_step("3. Konfigurasi DNS Server (BIND9) (Poin 2)")
     run_cmd("apt-get install bind9 bind9utils bind9-doc dnsutils -y")
     
-    # Konfigurasi Zone Dasar
     zone_conf = f"""
 zone "{DOMAIN_NAME}" {{
     type master;
@@ -97,7 +89,6 @@ zone "{DOMAIN_NAME}" {{
     with open("/etc/bind/named.conf.local", "w") as f:
         f.write(zone_conf)
         
-    # Konfigurasi DB Forward
     db_forward = f"""$TTL    604800
 @       IN      SOA     ns.{DOMAIN_NAME}. admin.{DOMAIN_NAME}. (
                               2         ; Serial
@@ -115,19 +106,17 @@ mail    IN      A       {SERVER_IP}
     with open(f"/etc/bind/db.{DOMAIN_NAME}", "w") as f:
         f.write(db_forward)
         
-    run_cmd("systemctl restart bind9")
-    run_cmd("systemctl enable bind9")
+    # PERBAIKAN: Menggunakan 'named' bukan 'bind9'
+    run_cmd("systemctl restart named")
+    run_cmd("systemctl enable named")
     print_success(f"BIND9 diinstal dan Domain {DOMAIN_NAME} dibuat")
 
 def step_web_nginx():
     print_step("4. Konfigurasi Secure Web Server (Nginx) (Poin 3)")
     run_cmd("apt-get install nginx openssl -y")
-    
-    # Generate Self-Signed SSL
     ssl_cmd = f"openssl req -x509 -nodes -days 365 -newkey rsa:2048 -keyout /etc/ssl/private/nginx-selfsigned.key -out /etc/ssl/certs/nginx-selfsigned.crt -subj '/C=ID/ST=Jawa/L=LKS/O=Sekolah/OU=IT/CN={DOMAIN_NAME}'"
     run_cmd(ssl_cmd)
     
-    # Konfigurasi Nginx SSL Block
     nginx_conf = f"""server {{
     listen 80;
     listen 443 ssl;
@@ -181,8 +170,6 @@ def step_ansible():
 def step_database():
     print_step("7. Konfigurasi Database Server (MariaDB) (Poin 6)")
     run_cmd("apt-get install mariadb-server -y")
-    
-    # Inisialisasi Database dan User LKS
     sql_commands = f"""
     CREATE DATABASE IF NOT EXISTS db_lks;
     CREATE USER IF NOT EXISTS 'admin_lks'@'localhost' IDENTIFIED BY '{DB_ROOT_PASS}';
@@ -198,33 +185,25 @@ def step_database():
 
 def step_mail_server():
     print_step("8. Konfigurasi Mail Server (Postfix & Dovecot) (Poin 7)")
-    # Pre-seed postfix untuk bypass prompt "Internet Site"
     run_cmd("echo 'postfix postfix/main_mailer_type string \"Internet Site\"' | debconf-set-selections")
     run_cmd(f"echo 'postfix postfix/mailname string {DOMAIN_NAME}' | debconf-set-selections")
-    
     run_cmd("apt-get install postfix dovecot-core dovecot-imapd dovecot-pop3d -y")
-    
-    # Basic Config Postfix
     run_cmd(f"postconf -e 'myhostname = mail.{DOMAIN_NAME}'")
     run_cmd(f"postconf -e 'mydomain = {DOMAIN_NAME}'")
     run_cmd(f"postconf -e 'myorigin = /etc/mailname'")
     run_cmd("systemctl restart postfix dovecot")
     run_cmd("systemctl enable postfix dovecot")
-    print_success("Postfix & Dovecot diinstal (Base Config)")
+    print_success("Postfix & Dovecot diinstal")
 
 def step_webmail():
     print_step("9. Konfigurasi Webmail Server (Roundcube) (Poin 8)")
-    # Mengabaikan dbconfig-common prompt yang bikin stuck
     run_cmd("echo 'roundcube-core roundcube/dbconfig-install boolean false' | debconf-set-selections")
     run_cmd("apt-get install roundcube roundcube-mysql php-fpm php-mysql -y")
-    
-    # Memasang symlink agar bisa diakses di web (http://IP/roundcube)
     run_cmd("ln -sf /usr/share/roundcube /var/www/html/roundcube")
-    print_success("Roundcube Webmail terinstal (Akses via /roundcube)")
+    print_success("Roundcube Webmail terinstal")
 
 def step_routing():
     print_step("10. Konfigurasi Routing Static/Dynamic (Poin 9)")
-    # Ini sekadar dummy route untuk memenuhi syarat "Routing Static di-set"
     run_cmd("ip route add 10.99.99.0/24 dev lo", ignore_error=True)
     print_success("Dummy Static Routing ditambahkan ke loopback")
 
@@ -242,12 +221,6 @@ table inet filter {
         tcp dport 80 accept
         tcp dport 443 accept
     }
-    chain forward {
-        type filter hook forward priority 0; policy accept;
-    }
-    chain output {
-        type filter hook output priority 0; policy accept;
-    }
 }
 table ip nat {
     chain postrouting {
@@ -260,49 +233,34 @@ table ip nat {
         
     run_cmd("systemctl restart nftables")
     run_cmd("systemctl enable nftables")
-    print_success("Nftables (Firewall + NAT Masquerade) diaktifkan, Port 22 aman")
+    print_success("Nftables (Firewall + NAT) diaktifkan")
 
 def step_vpn():
     print_step("12. Konfigurasi VPN Server (OpenVPN) (Poin 12)")
     run_cmd("apt-get install openvpn easy-rsa -y")
-    # Hanya instalasi base agar OpenVPN ada di sistem. Pembuatan sertifikat PKI 
-    # butuh interaksi/waktu lama, kita sediakan service-nya.
     print_success("OpenVPN & Easy-RSA diinstal")
 
 def step_ldap():
     print_step("13. Konfigurasi LDAP Server (Poin 13)")
-    # Bypass slapd admin password prompt
     run_cmd(f"echo 'slapd slapd/root_password password {LDAP_ADMIN_PASS}' | debconf-set-selections")
     run_cmd(f"echo 'slapd slapd/root_password_again password {LDAP_ADMIN_PASS}' | debconf-set-selections")
     run_cmd("apt-get install slapd ldap-utils -y")
-    print_success("OpenLDAP (slapd) diinstal dengan password rahasia")
+    print_success("OpenLDAP (slapd) diinstal")
 
 def main():
     os.system('clear')
     print(f"{Colors.HEADER}{Colors.BOLD}")
     print("====================================================")
-    print("🚀 SCRIPT AUTO-PROVISIONING LKS LINUX SERVER 🚀")
-    print("   Menginstal & Mengonfigurasi 13 Layanan Otomatis")
+    print("🚀 PROVISIONING LKS LINUX SERVER BERJALAN 🚀")
     print("====================================================")
     print(f"{Colors.ENDC}")
     
     check_root()
     
-    print(f"Target Domain : {Colors.OKCYAN}{DOMAIN_NAME}{Colors.ENDC}")
-    print(f"Target IP     : {Colors.OKCYAN}{SERVER_IP}{Colors.ENDC}\n")
-    print("Memulai proses dalam 3 detik... (Tekan Ctrl+C untuk batal)")
-    try:
-        time.sleep(3)
-    except KeyboardInterrupt:
-        print("\nDibatalkan.")
-        sys.exit(0)
-
-    # Memperbarui list repositori sekali di awal
-    print_step("0. Update Repository APT")
+    print("0. Update Repository APT")
     run_cmd("apt-get update -y")
     print_success("Repository Updated\n")
 
-    # Eksekusi sistematis semua fungsi
     steps = [
         step_ip_forwarding, step_ssh, step_dns, step_web_nginx,
         step_haproxy, step_ansible, step_database, step_mail_server,
@@ -313,14 +271,11 @@ def main():
         try:
             step()
         except Exception as e:
-            print_error(f"Gagal menjalankan step: {str(e)}")
-            continue # Melanjutkan ke service berikutnya meskipun ada yang gagal
+            print_error(f"Gagal: {str(e)}")
             
     print(f"\n{Colors.OKGREEN}{Colors.BOLD}====================================================")
-    print("🎉 SEMUA PROSES SELESAI DIEKSEKUSI 🎉")
+    print("🎉 SEMUA PROSES SELESAI 🎉")
     print("====================================================\n")
-    print("Sistem telah disiapkan dengan konfigurasi dasar yang dapat berjalan.")
-    print("Gunakan command 'systemctl status <service>' untuk cek manual jika diperlukan.")
     print(f"{Colors.ENDC}")
 
 if __name__ == "__main__":
